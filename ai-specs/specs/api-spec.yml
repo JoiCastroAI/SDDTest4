@@ -1,0 +1,360 @@
+openapi: 3.1.0
+info:
+  title: FastReport API
+  version: 0.1.0
+  description: Company management API with financial data, employee/client tracking, and dashboard analytics.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /companies:
+    get:
+      summary: List companies with pagination
+      operationId: listCompanies
+      tags: [companies]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        "200":
+          description: Paginated list of companies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedCompanyResponse"
+
+    post:
+      summary: Create a new company
+      operationId: createCompany
+      tags: [companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompanyRequest"
+      responses:
+        "201":
+          description: Company created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "409":
+          description: Company with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+    delete:
+      summary: Bulk delete companies
+      operationId: bulkDeleteCompanies
+      tags: [companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDeleteRequest"
+      responses:
+        "204":
+          description: Companies deleted
+
+  /companies/{company_id}:
+    get:
+      summary: Get company by ID
+      operationId: getCompany
+      tags: [companies]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Company details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "404":
+          description: Company not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update a company
+      operationId: updateCompany
+      tags: [companies]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCompanyRequest"
+      responses:
+        "200":
+          description: Company updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+        "404":
+          description: Company not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Company with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+    delete:
+      summary: Delete a company
+      operationId: deleteCompany
+      tags: [companies]
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Company deleted
+        "404":
+          description: Company not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    CreateCompanyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        street:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip_code:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        revenue:
+          type: number
+          format: decimal
+          default: 0
+        expenses:
+          type: number
+          format: decimal
+          default: 0
+        employees:
+          type: integer
+          default: 0
+        clients:
+          type: integer
+          default: 0
+
+    UpdateCompanyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        street:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip_code:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        revenue:
+          type: number
+          format: decimal
+          default: 0
+        expenses:
+          type: number
+          format: decimal
+          default: 0
+        employees:
+          type: integer
+          default: 0
+        clients:
+          type: integer
+          default: 0
+
+    CompanyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        street:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip_code:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        revenue:
+          type: number
+          format: decimal
+        expenses:
+          type: number
+          format: decimal
+        profit:
+          type: number
+          format: decimal
+          description: Computed as revenue - expenses
+        employees:
+          type: integer
+        clients:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PaginatedCompanyResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompanyResponse"
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+
+    BulkDeleteRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              msg:
+                type: string
+              type:
+                type: string

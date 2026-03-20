@@ -1,0 +1,512 @@
+---
+description: Backend development standards, best practices, and conventions for the FastReport FastAPI/Python application including Domain-Driven Design, Clean Architecture, async patterns, API design, and testing practices
+globs: ["backend/app/**/*.py", "backend/alembic/**/*.py", "backend/tests/**/*.py", "backend/pyproject.toml", "backend/Dockerfile"]
+alwaysApply: true
+---
+
+# Backend Project Standards and Best Practices
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Technology Stack](#technology-stack)
+- [Architecture Overview](#architecture-overview)
+- [Domain-Driven Design Principles](#domain-driven-design-principles)
+- [SOLID and DRY Principles](#solid-and-dry-principles)
+- [Coding Standards](#coding-standards)
+- [API Design Standards](#api-design-standards)
+- [Database Patterns](#database-patterns)
+- [Testing Standards](#testing-standards)
+- [Performance Best Practices](#performance-best-practices)
+- [Security Best Practices](#security-best-practices)
+- [Development Workflow](#development-workflow)
+- [Deployment](#deployment)
+
+---
+
+## Overview
+
+This document outlines the standards and conventions used in the FastReport backend application. The backend follows Domain-Driven Design (DDD) principles with Clean Architecture to ensure maintainability, testability, and scalability. The entire codebase is fully async.
+
+## Technology Stack
+
+### Core Technologies
+- **Python**: >= 3.12
+- **FastAPI**: >= 0.115.0 — async web framework
+- **Uvicorn**: >= 0.30.0 — ASGI server
+- **Pydantic**: >= 2.0 — data validation and serialization
+- **Pydantic-Settings**: >= 2.0 — environment configuration
+
+### Database & ORM
+- **PostgreSQL 16**: Relational database (Docker container)
+- **SQLAlchemy 2.0+**: Async ORM with `asyncpg` driver
+- **Alembic**: >= 1.13.0 — database migrations
+
+### Testing Framework
+- **pytest**: >= 8.0 with `pytest-asyncio` >= 0.23
+- **httpx**: >= 0.27 — async HTTP client for integration tests
+- **asyncio_mode**: `auto` (configured in `pyproject.toml`)
+
+### Development Tools
+- **Ruff**: >= 0.5 — linter and formatter (line-length 120, target Python 3.12)
+- **mypy**: >= 1.10 — strict static type checking
+- **Docker + docker-compose**: containerized local development
+
+## Architecture Overview
+
+### Clean Architecture with DDD
+
+The backend follows a strict layered architecture with dependency inversion:
+
+**API Layer** (`app/api/`)
+- Routers handle HTTP requests/responses
+- Middleware handles exception-to-HTTP mapping
+- Dependencies provide request-scoped resources (DB sessions, repos)
+
+**Application Layer** (`app/application/`)
+- Use cases orchestrate business operations
+- Pydantic schemas define request/response DTOs
+- Each use case is a single-purpose class with an `execute` method
+
+**Domain Layer** (`app/domain/`)
+- Entities are pure Python dataclasses (no ORM dependency)
+- Repository interfaces (ABCs) define data access contracts
+- Domain exceptions define business error cases
+
+**Infrastructure Layer** (`app/infrastructure/`)
+- SQLAlchemy ORM models implement persistence
+- Repository implementations satisfy domain interfaces
+- Database session management
+
+### Project Structure
+
+```
+backend/
+├── app/
+│   ├── main.py                         # FastAPI app entry point
+│   ├── config.py                       # Pydantic-Settings configuration
+│   ├── api/
+│   │   ├── routers/                    # FastAPI route handlers
+│   │   │   └── <entity>_router.py
+│   │   ├── middleware.py               # Exception handlers
+│   │   └── deps.py                     # Dependency injection helpers
+│   ├── application/
+│   │   ├── schemas/                    # Pydantic request/response models
+│   │   │   └── <entity>.py
+│   │   └── use_cases/                  # Business logic orchestration
+│   │       └── <entity>_use_cases.py
+│   ├── domain/
+│   │   ├── entities/                   # Domain dataclasses
+│   │   │   └── <entity>.py
+│   │   ├── repositories/              # Abstract repository interfaces
+│   │   │   └── <entity>_repository.py
+│   │   ├── services/                   # Domain services (business logic)
+│   │   ├── value_objects/              # Value objects
+│   │   └── exceptions.py              # Domain exception hierarchy
+│   └── infrastructure/
+│       ├── database/
+│       │   ├── models/                 # SQLAlchemy ORM models
+│       │   │   └── <entity>.py
+│       │   ├── base.py                 # DeclarativeBase
+│       │   └── session.py              # AsyncSession factory
+│       ├── repositories/              # Concrete repository implementations
+│       │   └── <entity>_repository.py
+│       └── services/                   # Infrastructure services
+├── alembic/
+│   ├── env.py                          # Async migration environment
+│   └── versions/                       # Migration scripts
+├── tests/
+│   ├── conftest.py                     # Shared fixtures
+│   ├── unit/                           # Unit tests (mocked dependencies)
+│   │   ├── api/
+│   │   ├── application/
+│   │   └── domain/
+│   └── integration/                    # Integration tests (real database)
+│       └── api/
+├── scripts/                            # Utility scripts (seeding, etc.)
+├── pyproject.toml                      # Dependencies, tools config
+├── alembic.ini                         # Alembic config
+├── Dockerfile                          # Multi-stage build
+└── entrypoint.sh                       # Container entry point
+```
+
+### Dependency Flow
+
+```
+API → Application (Use Cases + Schemas) → Domain (Entities + Repository Interfaces)
+                                                     ↑
+Infrastructure (SQLAlchemy Models + Concrete Repos) ──┘
+```
+
+Domain layer has ZERO dependencies on infrastructure. Infrastructure implements domain interfaces.
+
+## Domain-Driven Design Principles
+
+### Entities
+
+Entities are pure Python dataclasses with a UUID identity. They contain business logic as properties and methods but have no ORM or framework dependency.
+
+```python
+from dataclasses import dataclass, field
+from decimal import Decimal
+from uuid import UUID, uuid4
+
+@dataclass
+class Company:
+    name: str
+    id: UUID = field(default_factory=uuid4)
+    revenue: Decimal = Decimal("0")
+    expenses: Decimal = Decimal("0")
+
+    @property
+    def profit(self) -> Decimal:
+        return self.revenue - self.expenses
+```
+
+**Rules:**
+- Entities live in `app/domain/entities/`
+- Use `@dataclass` — not Pydantic BaseModel — for domain entities
+- Default `id` with `uuid4` factory
+- Business logic as methods/properties on the entity
+- No imports from `app.infrastructure` or `app.api`
+
+### Repositories
+
+Repository interfaces define the data access contract in the domain layer. Concrete implementations live in infrastructure.
+
+```python
+# Domain layer — abstract interface
+from abc import ABC, abstractmethod
+
+class CompanyRepository(ABC):
+    @abstractmethod
+    async def get_by_id(self, company_id: UUID) -> Company | None: ...
+
+    @abstractmethod
+    async def save(self, company: Company) -> Company: ...
+```
+
+**Rules:**
+- Interfaces in `app/domain/repositories/`
+- All methods are `async`
+- Return domain entities, never ORM models
+- Concrete implementations in `app/infrastructure/repositories/`
+
+### Domain Exceptions
+
+Custom exception hierarchy for business rule violations:
+
+```python
+class DomainException(Exception): ...
+
+class EntityNotFoundError(DomainException):
+    def __init__(self, entity: str, entity_id: str) -> None: ...
+
+class EntityAlreadyExistsError(DomainException):
+    def __init__(self, entity: str, field: str, value: str) -> None: ...
+```
+
+**Rules:**
+- All domain exceptions extend `DomainException`
+- Generic base exceptions (`EntityNotFoundError`, `EntityAlreadyExistsError`) for common patterns
+- Entity-specific exceptions extend the generic ones (e.g., `CompanyNotFoundError`)
+- Middleware maps exceptions to HTTP responses (404, 409, 400)
+
+## SOLID and DRY Principles
+
+### Single Responsibility
+- Each use case class handles one operation
+- Routers only handle HTTP concerns (parsing, status codes)
+- Repositories only handle data access
+
+### Open/Closed
+- New entities extend existing patterns without modifying base classes
+- Exception hierarchy is extensible
+
+### Dependency Inversion
+- Use cases depend on abstract `CompanyRepository`, not `SqlAlchemyCompanyRepository`
+- FastAPI `Depends()` injects concrete implementations at the API layer
+
+### DRY
+- Shared `_to_response()` helper converts domain entities to Pydantic responses
+- `_to_entity()` / `_to_model()` static methods on repository handle mapping
+- Base exception classes avoid repeating error message patterns
+
+## Coding Standards
+
+### Naming Conventions
+
+- **Variables/functions**: `snake_case` — e.g., `company_id`, `get_by_name`
+- **Classes**: `PascalCase` — e.g., `CompanyModel`, `CreateCompanyUseCase`
+- **Constants**: `UPPER_SNAKE_CASE` — e.g., `ACCESS_TOKEN_EXPIRE_MINUTES`
+- **Private members**: leading underscore — e.g., `_get_repo`, `_to_entity`
+- **Files**: `snake_case` — e.g., `company_router.py`, `company_use_cases.py`
+- **All names, comments, error messages, and logs must be in English**
+
+### Type Annotations
+
+- **All code must be fully typed** — mypy strict mode is enforced
+- Use `str | None` union syntax (Python 3.12+), not `Optional[str]`
+- Always annotate function parameters and return types
+- Use `Mapped[T]` for SQLAlchemy model columns
+
+```python
+# Correct
+async def get_by_id(self, company_id: UUID) -> Company | None: ...
+
+# Avoid
+async def get_by_id(self, company_id): ...
+```
+
+### Error Handling
+
+- Raise domain exceptions from use cases, never from routers
+- Middleware handles domain → HTTP mapping globally
+- Use specific exception subclasses, not generic `Exception`
+
+### Validation
+
+- Pydantic schemas at the API boundary validate all input
+- Use `Field(...)` constraints (`min_length`, `max_length`, `ge`, `le`)
+- Domain entities trust that input has been validated by schemas
+
+## API Design Standards
+
+### REST Endpoints
+
+All API endpoints follow RESTful conventions:
+
+```
+GET    /<resource>              # List with pagination
+GET    /<resource>/{id}         # Get by ID
+POST   /<resource>              # Create (returns 201)
+PUT    /<resource>/{id}         # Full update
+DELETE /<resource>/{id}         # Delete (returns 204)
+DELETE /<resource>              # Bulk delete (returns 204)
+```
+
+### Request/Response Patterns
+
+- Routers use Pydantic `response_model` for serialization
+- Create endpoints return `201 Created`
+- Delete endpoints return `204 No Content`
+- Pagination via `page` and `page_size` query parameters
+
+**Paginated response structure:**
+```json
+{
+    "items": [...],
+    "total": 100,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 10
+}
+```
+
+### Error Response Format
+
+```json
+{
+    "detail": "Human-readable error message"
+}
+```
+
+Status code mapping:
+- `EntityNotFoundError` → 404
+- `EntityAlreadyExistsError` → 409
+- Other `DomainException` → 400
+- Pydantic validation errors → 422 (FastAPI default)
+
+### CORS Configuration
+
+Configured via `CORSMiddleware` with origins from `settings.CORS_ORIGINS`:
+- Development default: `["http://localhost:5173"]`
+- Production: configured via `CORS_ORIGINS` environment variable
+
+## Database Patterns
+
+### SQLAlchemy Models
+
+ORM models live in `app/infrastructure/database/models/` and extend `Base` (DeclarativeBase).
+
+**Conventions:**
+- Table name: plural snake_case (`companies`)
+- Primary key: `UUID` with `uuid4` default
+- Timestamps: `created_at` and `updated_at` with `server_default=func.now()`
+- Use `Mapped[T]` type annotations on all columns
+- Financial fields: `Numeric(15, 2)` for money values
+
+### Migrations
+
+- Tool: Alembic with async support
+- Location: `backend/alembic/versions/`
+- Naming: `NNN_descriptive_name.py` (sequential numbering)
+- Always review generated migrations before applying
+- Run: `alembic upgrade head` (automatically done in entrypoint.sh)
+
+### Repository Implementation
+
+Concrete repositories extend the abstract domain interface:
+
+```python
+class SqlAlchemyCompanyRepository(CompanyRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+```
+
+**Patterns:**
+- Use `flush()` + `refresh()` instead of `commit()` — commits happen at the router level
+- `_to_entity()` static method converts ORM model → domain entity
+- `_to_model()` static method converts domain entity → ORM model
+- Use SQLAlchemy `select()` expressions, never raw SQL
+
+### Session Management
+
+- `AsyncSession` provided per-request via `get_db()` generator
+- `expire_on_commit=False` for performance
+- Commits happen at the router layer after use case execution
+- Tests use separate database (`appdb_test`) with rollback-per-test
+
+## Testing Standards
+
+### Test Organization
+
+```
+tests/
+├── conftest.py                     # Session + function-scoped fixtures
+├── unit/
+│   ├── api/                        # Router tests (mock use cases)
+│   ├── application/                # Use case tests (mock repos)
+│   └── domain/                     # Entity tests (no mocks)
+└── integration/
+    └── api/                        # Full endpoint tests (real DB)
+```
+
+### Test Structure (AAA Pattern)
+
+```python
+async def test_create_company_succeeds():
+    # Arrange
+    request = CreateCompanyRequest(name="Test Corp")
+    mock_repo = AsyncMock(spec=CompanyRepository)
+    mock_repo.get_by_name.return_value = None
+    mock_repo.save.return_value = Company(name="Test Corp")
+
+    # Act
+    use_case = CreateCompanyUseCase(mock_repo)
+    result = await use_case.execute(request)
+
+    # Assert
+    assert result.name == "Test Corp"
+    mock_repo.save.assert_called_once()
+```
+
+### Test Naming Convention
+
+- Use descriptive names: `test_<action>_<condition>_<expected_result>`
+- Group with `class Test<Component>:` for related tests
+
+### Fixtures (conftest.py)
+
+- `setup_database`: session-scoped, creates/drops tables
+- `db_session`: function-scoped, provides `AsyncSession`, rolls back after
+- `async_client`: function-scoped, provides `httpx.AsyncClient` with overridden DB dependency
+
+### Test Categories
+
+1. **Unit tests**: Mock all external dependencies, test business logic in isolation
+2. **Integration tests**: Real database, test full request→response flow
+3. **Domain tests**: Pure entity logic, no mocks needed
+
+### Async Testing
+
+- `asyncio_mode = "auto"` in `pyproject.toml` — no need for `@pytest.mark.asyncio`
+- Use `httpx.AsyncClient` for integration tests (not `TestClient`)
+
+## Performance Best Practices
+
+### Async Patterns
+- All database operations are async (`asyncpg` driver)
+- Use `select()` with `.offset()` and `.limit()` for pagination
+- Avoid N+1 queries — use eager loading when relationships exist
+- Use `func.count()` for efficient counting
+
+### Session Management
+- `expire_on_commit=False` prevents unnecessary DB roundtrips
+- Request-scoped sessions via `get_db()` generator
+- `flush()` instead of `commit()` in repositories for batching
+
+## Security Best Practices
+
+### Input Validation
+- All user input validated by Pydantic schemas at API boundary
+- Use `Field()` constraints for string lengths, numeric ranges
+- FastAPI returns 422 for validation failures automatically
+
+### Environment Variables
+- Configuration via `pydantic-settings` `BaseSettings`
+- Sensitive values (DATABASE_URL, SECRET_KEY) from environment
+- Never commit `.env` files with real credentials
+- `.env` file loaded automatically by Pydantic
+
+### Dependencies
+- Auth dependencies installed (python-jose, passlib) but not yet active
+- All endpoints currently public (auth is a planned future feature)
+
+## Development Workflow
+
+### Git Workflow
+- Feature branches with descriptive suffix `-backend`
+- Descriptive commit messages in English
+- Small, focused branches
+
+### Development Scripts
+
+```bash
+# Install dependencies
+pip install -e ".[dev]"
+
+# Run development server
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=app
+
+# Lint and format
+ruff check .
+ruff format .
+
+# Type check
+mypy app/
+
+# Run migrations
+alembic upgrade head
+
+# Create new migration
+alembic revision --autogenerate -m "descriptive_name"
+
+# Seed database
+python scripts/seed_companies.py
+```
+
+### Code Quality
+- Ruff for linting and formatting (line-length 120)
+- mypy strict mode for type safety
+- All tests must pass before merge
+
+## Deployment
+
+### Docker
+- Multi-stage Dockerfile (builder → runtime)
+- Base image: `python:3.12-slim`
+- Non-root user (`appuser`, uid 1000)
+- Health check on `/health` endpoint
+- Entry point runs migrations then starts Uvicorn
+
+### docker-compose
+- 3 services: `db` (PostgreSQL 16), `backend` (port 8000), `frontend` (port 5173)
+- Backend depends on healthy database
+- Environment variables via `.env` or defaults

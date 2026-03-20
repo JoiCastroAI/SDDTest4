@@ -1,0 +1,393 @@
+---
+description: Frontend development standards, best practices, and conventions for the FastReport React/TypeScript application including component patterns, state management, UI/UX guidelines, and testing practices
+globs: ["frontend/src/**/*.{ts,tsx}", "frontend/cypress/**/*.{ts,js}", "frontend/tsconfig.json", "frontend/vite.config.ts", "frontend/cypress.config.ts", "frontend/package.json"]
+alwaysApply: true
+---
+
+# Frontend Project Standards and Best Practices
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Technology Stack](#technology-stack)
+- [Project Structure](#project-structure)
+- [Coding Standards](#coding-standards)
+- [UI/UX Standards](#uiux-standards)
+- [Testing Standards](#testing-standards)
+- [Configuration Standards](#configuration-standards)
+- [Performance Best Practices](#performance-best-practices)
+- [Development Workflow](#development-workflow)
+
+---
+
+## Overview
+
+This document outlines the standards and conventions used in the FastReport frontend application. The frontend is a React SPA built with TypeScript, Vite, and Bootstrap that provides company management and financial dashboard functionality.
+
+## Technology Stack
+
+### Core Technologies
+- **React**: 18.3 — functional components and hooks exclusively
+- **TypeScript**: 5.5 — strict mode enabled
+- **Vite**: 5.4 — build tool and dev server
+- **React Router DOM**: 6.23 — client-side routing
+
+### UI Framework
+- **Bootstrap**: 5.3.3 — CSS framework
+- **React-Bootstrap**: 2.10.0 — React component library
+- **React-Bootstrap-Icons**: 1.11.0 — icon library
+- **Recharts**: 3.8.0 — charting and data visualization
+
+### State Management & Data Flow
+- **React Hooks**: useState, useEffect, useCallback for local state
+- **Custom Hooks**: for reusable stateful logic (e.g., `useDashboardData`)
+- **Axios**: 1.7.0 — HTTP client with interceptors
+
+### Testing Framework
+- **Cypress**: 13.7.0 — end-to-end testing
+- **data-testid**: primary element selection strategy
+
+### Development Tools
+- **ESLint**: 8.57 with TypeScript and React plugins
+- **Prettier**: 3.2 — code formatting
+- **TypeScript Compiler**: strict type checking
+
+## Project Structure
+
+```
+frontend/
+├── src/
+│   ├── App.tsx                     # Router configuration
+│   ├── main.tsx                    # Entry point (imports Bootstrap CSS)
+│   ├── index.css                   # Global styles and CSS variables
+│   ├── components/
+│   │   ├── common/                 # Shared reusable components
+│   │   │   ├── ConfirmDeleteModal.tsx
+│   │   │   └── Pagination.tsx
+│   │   ├── companies/              # Companies feature components
+│   │   │   ├── CompaniesTable.tsx
+│   │   │   ├── CompanyFormModal.tsx
+│   │   │   └── BulkActionsBar.tsx
+│   │   ├── dashboard/              # Dashboard feature components
+│   │   │   ├── KpiCard.tsx
+│   │   │   ├── RevenueChart.tsx
+│   │   │   ├── ProfitEvolutionChart.tsx
+│   │   │   ├── ExpensesVsRevenueChart.tsx
+│   │   │   ├── DistributionChart.tsx
+│   │   │   └── RankingTable.tsx
+│   │   └── layout/                 # App shell components
+│   │       ├── MainLayout.tsx
+│   │       └── Sidebar.tsx
+│   ├── hooks/                      # Custom React hooks
+│   │   └── useDashboardData.ts
+│   ├── pages/                      # Page-level components
+│   │   ├── DashboardPage.tsx
+│   │   └── CompaniesPage.tsx
+│   ├── services/                   # API service layer
+│   │   ├── api.ts                  # Axios instance + interceptors
+│   │   └── companyService.ts       # Company CRUD operations
+│   ├── types/                      # TypeScript type definitions
+│   │   ├── company.ts
+│   │   └── dashboard.ts
+│   ├── utils/                      # Utility functions
+│   │   └── format.ts               # Currency/number formatting
+│   ├── contexts/                   # React contexts (currently empty)
+│   └── assets/                     # Static assets
+├── cypress/
+│   ├── e2e/                        # E2E test specs
+│   │   ├── companies.cy.ts
+│   │   ├── dashboard.cy.ts
+│   │   ├── routing.cy.ts
+│   │   └── sidebar.cy.ts
+│   ├── support/
+│   └── fixtures/
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── cypress.config.ts
+├── .env.example
+└── Dockerfile
+```
+
+### Architecture Pattern
+
+**Feature-based component organization** with clear layer separation:
+- `pages/` — route-level components, orchestrate features
+- `components/<feature>/` — feature-specific UI components
+- `components/common/` — shared reusable components
+- `services/` — centralized API layer
+- `hooks/` — custom hooks extracting stateful logic
+- `types/` — shared TypeScript definitions
+- `utils/` — pure utility functions
+
+## Coding Standards
+
+### Naming Conventions
+
+- **Components**: PascalCase — `CompaniesTable.tsx`, `KpiCard.tsx`
+- **Variables/functions**: camelCase — `handleSubmit`, `pageSize`
+- **Constants**: UPPER_SNAKE_CASE — `VITE_API_URL`
+- **Types**: PascalCase — `Company`, `CreateCompanyPayload`, `PaginatedResponse`
+- **Files**: PascalCase for components (`CompaniesTable.tsx`), camelCase for utilities/services (`companyService.ts`, `format.ts`)
+- **CSS classes**: kebab-case — `kpi-card`, `companies-table`
+- **Hooks**: camelCase with `use` prefix — `useDashboardData`
+- **All names, comments, error messages, and console logs must be in English**
+
+### Component Conventions
+
+#### Functional Components Only
+All components are functional with hooks. No class components.
+
+```typescript
+type KpiCardProps = {
+  title: string;
+  value: number;
+  icon: React.ReactNode;
+};
+
+const KpiCard: React.FC<KpiCardProps> = ({ title, value, icon }) => {
+  return (
+    <div className="kpi-card">
+      {icon}
+      <h3>{title}</h3>
+      <p>{value}</p>
+    </div>
+  );
+};
+```
+
+**Rules:**
+- Use `type` for props definitions (not `interface`)
+- Destructure props in function signature
+- Use `React.FC<Props>` for component typing
+- Export components as default from their file
+
+#### Component Organization Within Files
+1. Imports
+2. Type definitions
+3. Component function
+4. Export
+
+### State Management
+
+**Local state with React hooks** — no global state library.
+
+- `useState` for component-level state (forms, modals, selections, loading, errors)
+- `useEffect` for data fetching and side effects
+- `useCallback` for memoized callbacks passed to children
+- Custom hooks for reusable stateful logic
+
+**Loading and error pattern:**
+```typescript
+const [data, setData] = useState<Company[]>([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState<string>("");
+
+useEffect(() => {
+  let cancelled = false;
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const result = await companyService.getAll();
+      if (!cancelled) setData(result.items);
+    } catch (err) {
+      if (!cancelled) setError("Failed to load data");
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  };
+  fetchData();
+  return () => { cancelled = true; };
+}, []);
+```
+
+### Service Layer
+
+Centralized API calls via service objects:
+
+```typescript
+export const companyService = {
+  getAll: async (page: number, pageSize: number): Promise<PaginatedResponse<Company>> => {
+    const response = await api.get<PaginatedResponse<Company>>("/companies", {
+      params: { page, page_size: pageSize },
+    });
+    return response.data;
+  },
+};
+```
+
+**Rules:**
+- All API calls go through the `api.ts` axios instance
+- Service methods are fully typed (params and return)
+- Services return data directly (unwrap `response.data`)
+- Group related methods in a service object
+
+### Type Definitions
+
+- Shared types live in `src/types/`
+- Use `type` keyword (not `interface`) for data shapes
+- API field names use snake_case to match backend (e.g., `page_size`, `zip_code`, `created_at`)
+- Frontend display logic handles formatting in components/utils
+
+## UI/UX Standards
+
+### Styling Approach
+
+**Bootstrap 5 + React-Bootstrap + CSS custom properties:**
+
+- Import Bootstrap CSS in `main.tsx`
+- Use React-Bootstrap components: `Modal`, `Button`, `Form`, `Table`, `Container`, `Row`, `Col`, `Alert`, `Spinner`
+- Custom design tokens via CSS variables in `index.css`:
+  - `--color-primary: #5a6745` (sage green)
+  - `--font-family: "Inter", sans-serif`
+  - `--spacing-section: 24px`
+- Component-specific styles use BEM-like class names: `kpi-card`, `sidebar-toggle`
+
+**No Tailwind CSS, CSS Modules, or styled-components.**
+
+### Form Handling
+
+- Controlled components with `useState`
+- React-Bootstrap `Form` components (`Form.Group`, `Form.Label`, `Form.Control`)
+- Disable submit button during submission
+- Clear form state after success
+- Show validation feedback via React-Bootstrap's validation states
+
+### Navigation
+
+- React Router v6 with `BrowserRouter`
+- `MainLayout` with `<Outlet />` for nested routes
+- Sidebar with `NavLink` for active state styling
+- Redirect `/` to `/dashboard`
+
+### Icons
+
+- Use `react-bootstrap-icons` for all icons
+- Import named icon components: `ChevronLeft`, `Building`, `Trash`, etc.
+
+### Data Visualization
+
+- Use Recharts for all charts (bar, line, combined)
+- Chart components are self-contained in `components/dashboard/`
+
+## Testing Standards
+
+### E2E Testing with Cypress
+
+**Primary testing strategy: end-to-end tests with Cypress.**
+
+Configuration:
+- Base URL: `http://localhost:5173`
+- API URL: `http://localhost:8000` (via `env`)
+- Viewport: 1280x720
+
+### Test Organization
+
+```
+cypress/e2e/
+├── companies.cy.ts     # Full CRUD operations, validation, pagination
+├── dashboard.cy.ts     # Dashboard rendering, KPI cards, charts
+├── routing.cy.ts       # Route navigation, layout persistence
+└── sidebar.cy.ts       # Sidebar collapse/expand functionality
+```
+
+### Test Patterns
+
+- **Use `data-testid` attributes** for reliable element selection
+- **Test user workflows**, not implementation details
+- **Group related tests** with `describe` blocks
+- **Use `beforeEach`** for setup and cleanup
+- **Test both success and error scenarios**
+
+```typescript
+describe("Companies CRUD", () => {
+  beforeEach(() => {
+    cy.visit("/companies");
+  });
+
+  it("should create a new company", () => {
+    cy.get('[data-testid="add-company-btn"]').click();
+    cy.get('[data-testid="company-name-input"]').type("Test Corp");
+    cy.get('[data-testid="submit-btn"]').click();
+    cy.contains("Test Corp").should("exist");
+  });
+});
+```
+
+### Testing Categories Covered
+
+1. **Routing**: redirect behavior, page loads, sidebar persistence
+2. **Sidebar**: collapse/expand, active states
+3. **Dashboard**: KPI cards, chart rendering, data display
+4. **Companies**: CRUD operations, form validation, pagination, bulk operations
+
+**Note:** No unit tests currently exist for the frontend. Cypress E2E tests are the sole testing layer.
+
+## Configuration Standards
+
+### TypeScript Configuration
+- Target: ES2022
+- Strict mode: enabled
+- JSX: react-jsx
+- Module resolution: bundler
+- Path alias: `@/*` → `src/*`
+
+### Environment Variables
+- Use `VITE_` prefix for client-side variables (Vite convention)
+- `VITE_API_URL`: Backend API base URL
+- `.env.example` documents required variables
+- Access via `import.meta.env.VITE_API_URL`
+
+### Axios Configuration
+- Base instance in `services/api.ts` with `VITE_API_URL` as baseURL
+- Request interceptor: adds Bearer token from `localStorage`
+- Response interceptor: handles 401 → logout and redirect to `/login`
+
+## Performance Best Practices
+
+### Component Optimization
+- `useCallback` for event handlers passed as props
+- Cancellation pattern in `useEffect` to prevent state updates on unmounted components
+- Pagination to avoid loading all data at once
+
+### Bundle
+- Vite tree-shaking and code splitting
+- TypeScript compilation before build (`tsc && vite build`)
+
+## Development Workflow
+
+### Git Workflow
+- Feature branches with descriptive suffix `-frontend`
+- Descriptive commit messages in English
+- Small, focused branches
+
+### Development Scripts
+
+```bash
+# Install dependencies
+npm install
+
+# Start dev server (port 5173)
+npm run dev
+
+# Production build (type-check + bundle)
+npm run build
+
+# Preview production build
+npm run preview
+
+# Lint
+npm run lint
+
+# Open Cypress interactive
+npx cypress open
+
+# Run Cypress headless
+npx cypress run
+```
+
+### Code Quality
+- ESLint with TypeScript and React rules
+- Prettier for consistent formatting
+- TypeScript strict mode for type safety
+- All Cypress tests must pass before merge
